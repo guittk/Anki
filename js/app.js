@@ -16,7 +16,7 @@
   // o card para o próximo nível (frase mais complexa, mais perto da vida real).
   // Qualquer resposta que não seja "Fácil" zera a contagem.
   const EVOLVE_STREAK_THRESHOLD = 5;
-  const MAX_CARD_LEVEL = 5;
+  const MAX_CARD_LEVEL = 3;
 
   const LANGUAGES = [
     { code:"en", label:"Inglês" },
@@ -479,9 +479,9 @@
           <span>${acc === null ? "sem dados" : "precisão " + acc + "%"}</span>
           <span>${card.TotalHits} revisões</span>
         </div>
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="btn btn-edit btn-sm" data-action="refresh">🔄 Nova frase</button>
-          <button class="btn btn-reject btn-sm" data-action="delete">🗑️ Excluir</button>
+        <div class="study-card-actions">
+          <button class="btn btn-edit btn-sm" data-action="refresh" title="Nova frase">🔄 Nova frase</button>
+          <button class="btn btn-reject btn-sm" data-action="delete" title="Excluir">🗑️ Excluir</button>
         </div>
       `;
       tile.querySelector('[data-action="refresh"]').addEventListener("click", () => refreshCard(key));
@@ -816,6 +816,13 @@
     sel.value = state.currentDeckId;
   }
 
+  function updateEvolveNotice(cards){
+    const total = cards.length;
+    const evolved = cards.filter(c => (c.Level || 1) > 1).length;
+    const shouldWarn = total > 0 && (evolved / total) > 0.8;
+    $("study-evolve-notice").classList.toggle("hidden", !shouldWarn);
+  }
+
   function loadNextCard(){
     const hasDecks = Object.keys(state.decks).length > 0;
     $("study-hero").classList.toggle("hidden", !hasDecks);
@@ -825,6 +832,7 @@
     if(!hasDecks){
       $("deck-status").textContent = "Nenhum baralho criado ainda.";
       state.currentCardKey = null;
+      $("study-evolve-notice").classList.add("hidden");
       return;
     }
 
@@ -839,6 +847,7 @@
     const cards = deck.Cards || {};
     const keys = Object.keys(cards);
     $("deck-status").textContent = `Baralho: ${deck.Name} · ${keys.length} card(s)`;
+    updateEvolveNotice(Object.values(cards));
 
     if(keys.length === 0){
       state.currentCardKey = null;
@@ -896,11 +905,30 @@
     return JSON.parse(cleaned);
   }
 
+  // Regras de complexidade por nível, para orientar a IA na geração das frases.
+  // Nível 1 é deliberadamente restritivo (poucas palavras, vocabulário mínimo)
+  // para que o aprendizado fique focado na palavra-alvo; os níveis seguintes
+  // vão liberando gradualmente mais complexidade e naturalidade.
+  function levelGuidelines(level){
+    if(level <= 1){
+      return "NÍVEL 1 (iniciante): a frase deve ter NO MÁXIMO 5 palavras, contando a palavra-alvo. " +
+        "Use apenas vocabulário básico e essencial (pronomes, verbos comuns, artigos), gramática mínima (ex: sujeito + verbo + objeto), " +
+        "sem orações subordinadas, sem expressões idiomáticas e sem termos raros ou técnicos além da própria palavra-alvo. " +
+        "Não adicione nenhuma palavra que não seja estritamente necessária para formar uma frase válida — o foco é 100% na palavra-alvo, não em contexto extra.";
+    }
+    if(level >= MAX_CARD_LEVEL){
+      return `NÍVEL ${MAX_CARD_LEVEL} (avançado): frase natural, como usada por um falante nativo no dia a dia, com no máximo 12 palavras. ` +
+        "Pode ter uma oração adicional simples e vocabulário um pouco mais rico, mas ainda clara e sem termos raros ou técnicos desnecessários.";
+    }
+    return `NÍVEL ${level} (intermediário): frase com no máximo 8 palavras, um pouco mais elaborada que o nível iniciante, ` +
+      "podendo incluir um complemento simples além do essencial, mas ainda com vocabulário comum, direto e sem termos raros.";
+  }
+
   function promptGenerateCards(words, deck){
     const lang = languageLabel(deck.Language);
     const themePart = deck.Theme ? ` sobre o tema "${deck.Theme}"` : "";
-    return `Pegue a lista de Palavras, gere frases simples no idioma ${lang}${themePart} usando cada palavra, depois traduza cada frase para Português, ` +
-      "e devolva **apenas** no seguinte formato JSON, sem explicações adicionais, sem comentários, sem texto fora do JSON:\n\n" +
+    return `Pegue a lista de Palavras, gere uma frase para cada uma no idioma ${lang}${themePart} usando a palavra, seguindo RIGOROSAMENTE esta regra de complexidade: ${levelGuidelines(1)} ` +
+      "Depois traduza cada frase para Português, e devolva **apenas** no seguinte formato JSON, sem explicações adicionais, sem comentários, sem texto fora do JSON:\n\n" +
       "{\n  \"Phrases\": [\n    { \"Word\": \"WORD1\", \"Phrase\": \"PHRASE1\", \"Translation\": \"TRANSLATION1\" }\n  ]\n}\n\n" +
       "Palavras:\n" + words.join("\n");
   }
@@ -915,21 +943,12 @@
       "Palavras:\n" + existingWords.join("\n");
   }
 
-  // Descreve o nível de complexidade atual do card para orientar a IA —
-  // nível 1 é uma frase simples de iniciante, nível MAX_CARD_LEVEL é uma
-  // frase natural, próxima de uma situação real.
-  function levelDescriptor(level){
-    if(level <= 1) return "uma frase SIMPLES, de nível iniciante";
-    if(level >= MAX_CARD_LEVEL) return `uma frase de nível ${level} de ${MAX_CARD_LEVEL}: natural e complexa, bem próxima de como seria usada em uma situação real do dia a dia`;
-    return `uma frase de nível ${level} de ${MAX_CARD_LEVEL}: um pouco mais complexa que uma frase de iniciante, mais próxima de uma situação real`;
-  }
-
   function promptRefreshCard(card, deck){
     const lang = languageLabel(deck.Language);
     const themePart = deck.Theme ? ` sobre o tema "${deck.Theme}"` : "";
     const level = card.Level || 1;
-    return `Pegue a Palavra, e gere ${levelDescriptor(level)}, no idioma ${lang}, com a palavra "${card.Word}"${themePart}, mas diferente de "${card.Phrase}", ` +
-      "depois traduza para Português, e devolva **apenas** no seguinte formato JSON, sem explicações " +
+    return `Pegue a Palavra "${card.Word}" e gere uma frase no idioma ${lang}${themePart}, diferente de "${card.Phrase}", seguindo RIGOROSAMENTE esta regra de complexidade: ${levelGuidelines(level)} ` +
+      "Depois traduza para Português, e devolva **apenas** no seguinte formato JSON, sem explicações " +
       "adicionais, sem comentários, sem texto fora do JSON:\n\n" +
       "{ \"Word\": \"WORD\", \"Phrase\": \"PHRASE\", \"Translation\": \"TRANSLATION\" }";
   }
@@ -937,8 +956,8 @@
   function promptChangeTheme(card, deck, newTheme){
     const lang = languageLabel(deck.Language);
     const level = card.Level || 1;
-    return `Pegue a Palavra "${card.Word}", e gere ${levelDescriptor(level)}, no idioma ${lang}, usando essa palavra, sobre o tema "${newTheme}", ` +
-      "depois traduza para Português, e devolva **apenas** no seguinte formato JSON, sem explicações " +
+    return `Pegue a Palavra "${card.Word}" e gere uma frase no idioma ${lang} usando essa palavra, sobre o tema "${newTheme}", seguindo RIGOROSAMENTE esta regra de complexidade: ${levelGuidelines(level)} ` +
+      "Depois traduza para Português, e devolva **apenas** no seguinte formato JSON, sem explicações " +
       "adicionais, sem comentários, sem texto fora do JSON:\n\n" +
       "{ \"Word\": \"WORD\", \"Phrase\": \"PHRASE\", \"Translation\": \"TRANSLATION\" }";
   }
@@ -946,8 +965,8 @@
   function promptEvolveCard(card, deck, newLevel){
     const lang = languageLabel(deck.Language);
     const themePart = deck.Theme ? ` sobre o tema "${deck.Theme}"` : "";
-    return `Pegue a Palavra "${card.Word}", e gere ${levelDescriptor(newLevel)}, no idioma ${lang}${themePart}, usando essa palavra, mais complexa e mais próxima da vida real do que a frase anterior ("${card.Phrase}"), ` +
-      "depois traduza para Português, e devolva **apenas** no seguinte formato JSON, sem explicações " +
+    return `Pegue a Palavra "${card.Word}" e gere uma frase no idioma ${lang}${themePart} usando essa palavra, mais elaborada que a frase anterior ("${card.Phrase}"), seguindo RIGOROSAMENTE esta regra de complexidade: ${levelGuidelines(newLevel)} ` +
+      "Depois traduza para Português, e devolva **apenas** no seguinte formato JSON, sem explicações " +
       "adicionais, sem comentários, sem texto fora do JSON:\n\n" +
       "{ \"Word\": \"WORD\", \"Phrase\": \"PHRASE\", \"Translation\": \"TRANSLATION\" }";
   }
@@ -1258,6 +1277,10 @@
   $("btn-goto-decks").addEventListener("click", () => {
     switchView("view-decks");
     openDeckModal("create");
+  });
+
+  $("btn-study-evolve-goto").addEventListener("click", () => {
+    if(state.currentDeckId) openDeckDetail(state.currentDeckId);
   });
 
   $("btn-new-deck").addEventListener("click", () => openDeckModal("create"));
