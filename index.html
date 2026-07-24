@@ -100,6 +100,7 @@
               <div class="face front">
                 <p class="eyebrow">Palavra</p>
                 <div class="word-text" id="card-word">—</div>
+                <div class="card-level-hint" id="card-level-hint" title="Nível de complexidade da frase — evolui a cada 5 respostas ✓✓ Fácil seguidas">—</div>
               </div>
               <div class="face back">
                 <button class="btn-icon face-sound-btn" id="btn-sound" title="Ouvir pronúncia">🔊</button>
@@ -242,6 +243,22 @@
         <div style="display:flex;justify-content:flex-end;margin-top:14px;">
           <button class="btn btn-ghost btn-sm" id="btn-logout-2">Sair da conta</button>
         </div>
+      </div>
+
+      <div class="config-section">
+        <p class="config-section-title">Evolução das frases</p>
+        <p class="config-section-desc">
+          Cada card guarda um nível de complexidade, de 1 a 5, e a frase atual daquele nível.
+          As frases começam simples — perto de uma palavra isolada — para facilitar aprender a
+          palavra em questão. Ao marcar <strong>✓✓ Fácil</strong> 5 vezes seguidas no mesmo card, a
+          frase evolui automaticamente para o próximo nível: um pouco mais complexa e mais perto de
+          uma situação real. Isso acontece sem pedir confirmação — você só recebe um aviso na tela
+          quando o card evolui. Qualquer resposta diferente de "Fácil" zera essa contagem.
+        </p>
+        <p class="config-section-desc" style="margin:0;">
+          Usar <strong>🔄 Nova frase</strong> gera outra frase apenas para o nível atual do card —
+          não muda o nível nem afeta a evolução.
+        </p>
       </div>
     </section>
 
